@@ -15,10 +15,8 @@ import java.awt.Font;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPriority;
 
-
 public class VisualMetronomeNumberOverlay extends Overlay
 {
-
     private final Client client;
     private final VisualMetronomeConfig config;
     private final VisualMetronomePlugin plugin;
@@ -33,7 +31,6 @@ public class VisualMetronomeNumberOverlay extends Overlay
         setPosition(OverlayPosition.DYNAMIC);
         setLayer(OverlayLayer.UNDER_WIDGETS);
         setPriority(OverlayPriority.MED);
-
     }
 
     @Override
@@ -50,9 +47,10 @@ public class VisualMetronomeNumberOverlay extends Overlay
                 graphics.setFont(new Font(config.fontType().toString(), Font.PLAIN, config.fontSize()));
             }
 
-            final int height = client.getLocalPlayer().getLogicalHeight()+20;
+            final int height = client.getLocalPlayer().getLogicalHeight() + 20;
             final LocalPoint localLocation = client.getLocalPlayer().getLocalLocation();
             final Point playerPoint = Perspective.localToCanvas(client, localLocation, client.getPlane(), height);
+
             if (config.tickCount() == 1)
             {
                 OverlayUtil.renderTextLocation(graphics, playerPoint, String.valueOf(plugin.currentColorIndex), config.NumberColor());
@@ -66,6 +64,13 @@ public class VisualMetronomeNumberOverlay extends Overlay
         return null;
     }
 
+    private java.awt.Point convertToAwtPoint(net.runelite.api.Point point)
+    {
+        return new java.awt.Point(point.getX(), point.getY());
+    }
+
+    private net.runelite.api.Point convertToRuneLitePoint(java.awt.Point point)
+    {
+        return new net.runelite.api.Point(point.x, point.y);
+    }
 }
-
-

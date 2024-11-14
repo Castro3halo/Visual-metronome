@@ -1,167 +1,137 @@
 package com.visualmetronome;
 
-import com.google.inject.Provides;
-import net.runelite.api.events.GameTick;
-import net.runelite.client.config.ConfigManager;
-import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
-import net.runelite.client.plugins.Plugin;
-import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.overlay.*;
+import net.runelite.api.Client;
+
 import javax.inject.Inject;
-import java.awt.event.KeyEvent;
-import java.awt.Color;
-import java.awt.Dimension;
-import net.runelite.client.input.KeyListener;
-import net.runelite.client.input.KeyManager;
+import java.awt.*;
 
-@PluginDescriptor(
-        name = "Visual Metronome",
-        description = "Shows a visual cue on an overlay every game tick to help timing based activities",
-        tags = {"timers", "overlays", "tick", "skilling"}
-)
-public class VisualMetronomePlugin extends Plugin implements KeyListener
+public class FullResizableVisualMetronomeOverlay extends Overlay
 {
-    @Inject
-    private OverlayManager overlayManager;
+    private final Client client;
+    private final VisualMetronomeConfig config;
+    private final VisualMetronomePlugin plugin;
+
+    private static int TITLE_PADDING = 10;
+    private static final int MINIMUM_SIZE = 16;
+    private static final int OFFSET_Y = 20;
+    private static final int MOUSE_OFFSET_X = 1100;
+    private static final int MOUSE_OFFSET_Y = 110;
 
     @Inject
-    private ConfigManager configManager;
-
-    @Inject
-    private VisualMetronomeTileOverlay tileOverlay;
-
-    @Inject
-    private VisualMetronomeNumberOverlay numberOverlay;
-
-    @Inject
-    private FullResizableVisualMetronomeOverlay overlay;
-
-    @Inject
-    private VisualMetronomeConfig config;
-
-    @Inject
-    private KeyManager keyManager;
-
-    protected int currentColorIndex = 0;
-    protected int tickCounter = 0;
-    protected Color currentColor = Color.WHITE;
-
-    protected Dimension DEFAULT_SIZE = new Dimension(25, 25);
-
-    @Provides
-    VisualMetronomeConfig provideConfig(ConfigManager configManager)
+    public FullResizableVisualMetronomeOverlay(Client client, VisualMetronomeConfig config, VisualMetronomePlugin plugin)
     {
-        return configManager.getConfig(VisualMetronomeConfig.class);
+        super(plugin);
+        this.client = client;
+        this.config = config;
+        this.plugin = plugin;
+
+        setMinimumSize(MINIMUM_SIZE);
+        setResizable(true);
     }
 
-    @Subscribe
-    public void onGameTick(GameTick tick)
+    @Override
+    public Dimension render(Graphics2D graphics)
     {
-        if (tickCounter % config.tickCount() == 0)
+        Dimension preferredSize = getPreferredSize();
+
+        if (preferredSize == null)
         {
-            tickCounter = 0;
-            if (currentColorIndex == config.colorCycle())
+            preferredSize = plugin.DEFAULT_SIZE;
+            setPreferredSize(preferredSize);
+        }
+
+        if (config.enableMetronome())
+        {
+            java.awt.Point location;
+            if (config.renderToMouse())
             {
-                currentColorIndex = 0;
+                setPosition(OverlayPosition.DYNAMIC);
+                setLayer(OverlayLayer.ALWAYS_ON_TOP);
+                setPriority(OverlayPriority.HIGH);
+
+                java.awt.Point mouseCanvasPosition = client.getMouseCanvasPosition();
+                if (mouseCanvasPosition.getX() < 0 || mouseCanvasPosition.getY() < 0)
+                {
+                    location = new java.awt.Point(preferredSize.width / 2, preferredSize.height / 2);
+                }
+                else
+                {
+                    location = convertToAwtPoint(mouseCanvasPosition);
+                    location.x -= MOUSE_OFFSET_X;
+                    location.y -= MOUSE_OFFSET_Y + OFFSET_Y;
+                }
             }
-            switch (++currentColorIndex)
+            else
             {
-                case 1:
-                    currentColor = config.getTickColor();
-                    break;
-                case 2:
-                    currentColor = config.getTockColor();
-                    break;
-                case 3:
-                    currentColor = config.getTick3Color();
-                    break;
-                case 4:
-                    currentColor = config.getTick4Color();
-                    break;
-                case 5:
-                    currentColor = config.getTick5Color();
-                    break;
-                case 6:
-                    currentColor = config.getTick6Color();
-                    break;
-                case 7:
-                    currentColor = config.getTick7Color();
-                    break;
-                case 8:
-                    currentColor = config.getTick8Color();
-                    break;
-                case 9:
-                    currentColor = config.getTick9Color();
-                    break;
-                case 10:
-                    currentColor = config.getTick10Color();
+                setPosition(OverlayPosition.ABOVE_CHATBOX_RIGHT);
+                setLayer(OverlayLayer.UNDER_WIDGETS);
+                setPriority(OverlayPriority.NONE);
+
+                renderBoxAndText(graphics, preferredSize, 0, 0);
+                return preferredSize;
+            }
+
+            renderBoxAndText(graphics, preferredSize, location.x - preferredSize.width / 2, location.y - preferredSize.height / 2);
+        }
+
+        return preferredSize;
+    }
+
+    private void renderBoxAndText(Graphics2D graphics, Dimension preferredSize, int x, int y)
+    {
+        graphics.setColor(plugin.currentColor);
+        graphics.fillRect(x, y, preferredSize.width, preferredSize.height);
+        TITLE_PADDING = (Math.min(preferredSize.width, preferredSize.height) / 2 - 4);
+
+        if (config.showTick())
+        {
+            int textX = x + preferredSize.width / 3;
+            int textY = y + preferredSize.height;
+            graphics.setColor(config.NumberColor());
+
+            if (config.disableFontScaling())
+            {
+                if (config.tickCount() == 1)
+                {
+                    graphics.drawString(String.valueOf(plugin.currentColorIndex), x + TITLE_PADDING, y + preferredSize.height - TITLE_PADDING);
+                }
+                else
+                {
+                    graphics.drawString(String.valueOf(plugin.tickCounter), x + TITLE_PADDING, y + preferredSize.height - TITLE_PADDING);
+                }
+            }
+            else
+            {
+                if (config.fontType() == FontTypes.REGULAR)
+                {
+                    graphics.setFont(new Font(FontManager.getRunescapeFont().getName(), Font.PLAIN, Math.min(preferredSize.width, preferredSize.height)));
+                }
+                else
+                {
+                    graphics.setFont(new Font(config.fontType().toString(), Font.PLAIN, Math.min(preferredSize.width, Math.min(preferredSize.width, preferredSize.height))));
+                }
+
+                if (config.tickCount() == 1)
+                {
+                    OverlayUtil.renderTextLocation(graphics, new java.awt.Point(textX, textY), String.valueOf(plugin.currentColorIndex), config.NumberColor());
+                }
+                else
+                {
+                    OverlayUtil.renderTextLocation(graphics, new java.awt.Point(textX, textY), String.valueOf(plugin.tickCounter), config.NumberColor());
+                }
             }
         }
-        tickCounter++;
-    }
-    @Subscribe
-    public void onConfigChanged(ConfigChanged event)
-    {
-        if (!event.getGroup().equals("visualmetronome"))
-        {
-            return;
-        }
-
-        if (currentColorIndex > config.colorCycle())
-        {
-            currentColorIndex = 0;
-        }
-
-        if (tickCounter > config.tickCount())
-        {
-            tickCounter = 0;
-        }
-
-        DEFAULT_SIZE = new Dimension(config.boxWidth(), config.boxWidth());
     }
 
-    @Override
-    protected void startUp() throws Exception
+    private java.awt.Point convertToAwtPoint(java.awt.Point point)
     {
-        DEFAULT_SIZE = new Dimension(config.boxWidth(), config.boxWidth());
-        overlay.setPreferredSize(DEFAULT_SIZE);
-        overlayManager.add(overlay);
-        overlayManager.add(tileOverlay);
-        overlayManager.add(numberOverlay);
-        keyManager.registerKeyListener(this);
+        return new java.awt.Point(point.getX(), point.getY());
     }
 
-    @Override
-    protected void shutDown() throws Exception
+    private java.awt.Point convertToRuneLitePoint(java.awt.Point point)
     {
-        overlayManager.remove(overlay);
-        overlayManager.remove(tileOverlay);
-        overlayManager.remove(numberOverlay);
-        tickCounter = 0;
-        currentColorIndex = 0;
-        currentColor = config.getTickColor();
-        keyManager.unregisterKeyListener(this);
-    }
-
-    //hotkey settings
-    @Override
-    public void keyTyped(KeyEvent e)
-    {
-    }
-
-    @Override
-    public void keyPressed(KeyEvent e)
-    {
-        if (config.tickResetHotkey().matches(e))
-        {
-            tickCounter = 0;
-            currentColorIndex = 0;
-        }
-    }
-
-    @Override
-    public void keyReleased(KeyEvent e)
-    {
+        return new Point(point.x, point.y);
     }
 }

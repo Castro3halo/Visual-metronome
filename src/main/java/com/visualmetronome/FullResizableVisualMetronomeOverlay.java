@@ -1,31 +1,32 @@
 package com.visualmetronome;
 
 import net.runelite.client.ui.FontManager;
-import net.runelite.client.ui.overlay.Overlay;
-import net.runelite.client.ui.overlay.OverlayPosition;
-import java.awt.Dimension;
-import java.awt.Graphics2D;
-import java.awt.Font;
+import net.runelite.client.ui.overlay.*;
+import net.runelite.api.Client;
+
 import javax.inject.Inject;
-import net.runelite.api.Point;
-import net.runelite.client.ui.overlay.OverlayUtil;
+import java.awt.*;
 
 public class FullResizableVisualMetronomeOverlay extends Overlay
 {
-
+    private final Client client;
     private final VisualMetronomeConfig config;
     private final VisualMetronomePlugin plugin;
 
     private static int TITLE_PADDING = 10;
-    private static final int MINIMUM_SIZE = 16; // too small and resizing becomes impossible, requiring a reset
+    private static final int MINIMUM_SIZE = 16;
+    private static final int OFFSET_Y = 20;
+    private static final int MOUSE_OFFSET_X = 1100;
+    private static final int MOUSE_OFFSET_Y = 110;
 
     @Inject
-    public FullResizableVisualMetronomeOverlay(VisualMetronomeConfig config, VisualMetronomePlugin plugin)
+    public FullResizableVisualMetronomeOverlay(Client client, VisualMetronomeConfig config, VisualMetronomePlugin plugin)
     {
         super(plugin);
+        this.client = client;
         this.config = config;
         this.plugin = plugin;
-        setPosition(OverlayPosition.ABOVE_CHATBOX_RIGHT);
+
         setMinimumSize(MINIMUM_SIZE);
         setResizable(true);
     }
@@ -37,56 +38,100 @@ public class FullResizableVisualMetronomeOverlay extends Overlay
 
         if (preferredSize == null)
         {
-            // if this happens, reset to default - should be rare, but eg. alt+rightclick will cause this
             preferredSize = plugin.DEFAULT_SIZE;
             setPreferredSize(preferredSize);
         }
 
         if (config.enableMetronome())
         {
-            graphics.setColor(plugin.currentColor);
-            graphics.fillRect(0, 0, preferredSize.width, preferredSize.height);
-            TITLE_PADDING = (Math.min(preferredSize.width, preferredSize.height) / 2 - 4); // scales tick number position with box size
-
-            if (config.showTick())
+            java.awt.Point location;
+            if (config.renderToMouse())
             {
-                if (config.disableFontScaling())
-                {
-                    graphics.setColor(config.NumberColor());
-                    if (config.tickCount() == 1)
-                    {
-                        graphics.drawString(String.valueOf(plugin.currentColorIndex), TITLE_PADDING, preferredSize.height - TITLE_PADDING);
-                    }
-                    else
-                    {
-                        graphics.drawString(String.valueOf(plugin.tickCounter), TITLE_PADDING, preferredSize.height - TITLE_PADDING);
-                    }
+                setPosition(OverlayPosition.DYNAMIC);
+                setLayer(OverlayLayer.ALWAYS_ON_TOP);
+                setPriority(OverlayPriority.HIGH);
 
+                java.awt.Point mouseCanvasPosition = client.getMouseCanvasPosition();
+                if (mouseCanvasPosition.getX() < 0 || mouseCanvasPosition.getY() < 0)
+                {
+                    location = new java.awt.Point(preferredSize.width / 2, preferredSize.height / 2);
                 }
                 else
                 {
-                    if (config.fontType() == FontTypes.REGULAR)
-                    {
-                        graphics.setFont(new Font(FontManager.getRunescapeFont().getName(), Font.PLAIN, Math.min(preferredSize.width, preferredSize.height))); //scales font size based on the size of the metronome
-                    }
-                    else
-                    {
-                        graphics.setFont(new Font(config.fontType().toString(), Font.PLAIN, Math.min(preferredSize.width, Math.min(preferredSize.width, preferredSize.height))));
-                    }
-
-                    final Point tickCounterPoint = new Point(preferredSize.width / 3, preferredSize.height);
-                    if (config.tickCount() == 1)
-                    {
-                        OverlayUtil.renderTextLocation(graphics, tickCounterPoint, String.valueOf(plugin.currentColorIndex), config.NumberColor());
-                    }
-                    else
-                    {
-                        OverlayUtil.renderTextLocation(graphics, tickCounterPoint, String.valueOf(plugin.tickCounter), config.NumberColor());
-                    }
+                    location = convertToAwtPoint(mouseCanvasPosition);
+                    location.x -= MOUSE_OFFSET_X;
+                    location.y -= MOUSE_OFFSET_Y + OFFSET_Y;
                 }
             }
+            else
+            {
+                setPosition(OverlayPosition.ABOVE_CHATBOX_RIGHT);
+                setLayer(OverlayLayer.UNDER_WIDGETS);
+                setPriority(OverlayPriority.NONE);
+
+                renderBoxAndText(graphics, preferredSize, 0, 0);
+                return preferredSize;
+            }
+
+            renderBoxAndText(graphics, preferredSize, location.x - preferredSize.width / 2, location.y - preferredSize.height / 2);
         }
 
         return preferredSize;
+    }
+
+    private void renderBoxAndText(Graphics2D graphics, Dimension preferredSize, int x, int y)
+    {
+        graphics.setColor(plugin.currentColor);
+        graphics.fillRect(x, y, preferredSize.width, preferredSize.height);
+        TITLE_PADDING = (Math.min(preferredSize.width, preferredSize.height) / 2 - 4);
+
+        if (config.showTick())
+        {
+            int textX = x + preferredSize.width / 3;
+            int textY = y + preferredSize.height;
+            graphics.setColor(config.NumberColor());
+
+            if (config.disableFontScaling())
+            {
+                if (config.tickCount() == 1)
+                {
+                    graphics.drawString(String.valueOf(plugin.currentColorIndex), x + TITLE_PADDING, y + preferredSize.height - TITLE_PADDING);
+                }
+                else
+                {
+                    graphics.drawString(String.valueOf(plugin.tickCounter), x + TITLE_PADDING, y + preferredSize.height - TITLE_PADDING);
+                }
+            }
+            else
+            {
+                if (config.fontType() == FontTypes.REGULAR)
+                {
+                    graphics.setFont(new Font(FontManager.getRunescapeFont().getName(), Font.PLAIN, Math.min(preferredSize.width, preferredSize.height)));
+                }
+                else
+                {
+                    graphics.setFont(new Font(config.fontType().toString(), Font.PLAIN, Math.min(preferredSize.width, Math.min(preferredSize.width, preferredSize.height))));
+                }
+
+                if (config.tickCount() == 1)
+                {
+                    OverlayUtil.renderTextLocation(graphics, new java.awt.Point(textX, textY), String.valueOf(plugin.currentColorIndex), config.NumberColor());
+                }
+                else
+                {
+                    OverlayUtil.renderTextLocation(graphics, new java.awt.Point(textX, textY), String.valueOf(plugin.tickCounter), config.NumberColor());
+                }
+            }
+        }
+    }
+
+    private java.awt.Point convertToAwtPoint(java.awt.Point point)
+    {
+        return new java.awt.Point(point.getX(), point.getY());
+    }
+
+    private java.awt.Point convertToRuneLitePoint(java.awt.Point point)
+    {
+        return new Point(point.x, point.y);
     }
 }
